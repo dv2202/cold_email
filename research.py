@@ -9,9 +9,9 @@ import os
 from google import genai
 from google.genai import types
 
-# Defaults to the writer's model; override with RESEARCH_MODEL if you want a bigger
-# model for research. "flash" tiers handle grounded lookups well.
-MODEL = os.environ.get("RESEARCH_MODEL") or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# The model is chosen in the app and passed through. This is only the fallback for
+# the CLI and for requests that omit a model. "flash" tiers handle grounded lookups well.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 PROMPT = """Research the company "{company}"{site}.
 
@@ -29,13 +29,13 @@ preamble and no markdown headers. Cover:
 Keep it tight. Facts only. If something is unknown, say so rather than guessing."""
 
 
-def research_company(company: str, role: str, website: str | None = None, api_key: str = "") -> str:
+def research_company(company: str, role: str, website: str | None = None, api_key: str = "", model: str = "") -> str:
     client = genai.Client(api_key=api_key or os.environ.get("GEMINI_API_KEY"))
     site = f" (website: {website})" if website else ""
     prompt = PROMPT.format(company=company, role=role, site=site)
     try:
         response = client.models.generate_content(
-            model=MODEL,
+            model=model or DEFAULT_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],

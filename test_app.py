@@ -109,9 +109,15 @@ class WebGenerationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["text"], "Python engineer")
 
-    def test_backend_does_not_serve_frontend(self):
+    def test_root_serves_the_built_frontend(self):
+        # On Vercel a single function serves both the SPA and the API, so when the
+        # build exists the root returns the HTML page; otherwise a clean 404.
         response = TestClient(app.app).get("/")
-        self.assertEqual(response.status_code, 404)
+        if (app.WEB_ROOT / "index.html").is_file():
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("text/html", response.headers.get("content-type", ""))
+        else:
+            self.assertEqual(response.status_code, 404)
 
     def test_local_frontend_preflight_is_allowed(self):
         response = TestClient(app.app).options(

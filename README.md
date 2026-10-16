@@ -40,7 +40,7 @@ npm run dev --prefix frontend
 
 Open **http://127.0.0.1:5173**. Vite proxies `/api` calls to the backend. Save your Gemini key and resume in the Personal setup section, add a company name or job description (paste it or upload a PDF, DOCX, TXT, or MD up to 3 MB), and generate.
 
-An optional `.env` can set `GEMINI_MODEL` or `RESEARCH_MODEL` (see `.env.example`). The API key is entered in the app, never read from `.env`.
+The model is chosen with a dropdown in the app (defaults to Gemini 3.5 Flash-Lite). The API key is entered in the app too, never read from `.env`. An optional `.env` only holds a fallback `GEMINI_API_KEY` for the CLI (see `.env.example`).
 
 ## Deploy on Vercel
 
@@ -57,7 +57,7 @@ Two things matter because of how Vercel bundles the function:
 
 - **No `/api` rewrite.** FastAPI receives requests on their original paths, so `vercel.json` has no rewrites. It only sets the build command and the function's `maxDuration`.
 
-Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for a same-domain deploy. You may set `GEMINI_MODEL` / `RESEARCH_MODEL` in Vercel; the Gemini key is entered in the app, not as an environment variable. The 3 MB upload limit keeps base64 payloads under Vercel's 4.5 MB function request limit.
+Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for a same-domain deploy. No model or key environment variables are needed; both are chosen in the app. The 3 MB upload limit keeps base64 payloads under Vercel's 4.5 MB function request limit.
 
 ## Deploy on Render (alternative)
 

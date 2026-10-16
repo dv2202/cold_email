@@ -8,9 +8,9 @@ import os
 
 from google import genai
 
-# He mentioned a "flash lite" model. 2.5 Flash-Lite is the real id as of now;
-# override with GEMINI_MODEL if the account has a newer one (e.g. gemini-3-flash-lite).
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+# The model is chosen in the app and passed through on every call. This is only
+# the fallback for the CLI and for requests that omit a model.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 SYSTEM = """You write cold job-application emails for a software/AI engineer.
 
@@ -99,6 +99,7 @@ def generate_email(
     jd: str = "",
     company: str = "",
     api_key: str = "",
+    model: str = "",
 ) -> str:
     client = genai.Client(api_key=api_key or os.environ.get("GEMINI_API_KEY"))
     prompt = USER.format(
@@ -113,7 +114,7 @@ def generate_email(
     )
     try:
         response = client.models.generate_content(
-            model=MODEL,
+            model=model or DEFAULT_MODEL,
             contents=prompt,
             config={"system_instruction": SYSTEM},
         )
@@ -152,7 +153,7 @@ def distill_profile(resume_text: str, api_key: str = "", model: str | None = Non
     prompt = f"Raw resume text:\n\n{resume_text}\n\nProduce the candidate profile now."
     try:
         response = client.models.generate_content(
-            model=model or MODEL,
+            model=model or DEFAULT_MODEL,
             contents=prompt,
             config={"system_instruction": DISTILL_SYSTEM},
         )

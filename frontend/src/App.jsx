@@ -4,6 +4,13 @@ const KEY = 'cold_email_gemini_key';
 const PROFILE = 'cold_email_profile';
 const PROFILE_NAME = 'cold_email_profile_name';
 const PROFILE_DISTILLED = 'cold_email_profile_distilled';
+const MODEL_KEY = 'cold_email_model';
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+const MODELS = [
+  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite — fast, cheapest' },
+  { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash — stronger' },
+  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' },
+];
 const ACCEPTED = ['txt', 'md', 'pdf', 'docx'];
 const MAX_FILE = 3 * 1024 * 1024;
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
@@ -40,6 +47,7 @@ function Icon({ name, className = 'h-5 w-5' }) {
     copy: <><rect x="7" y="5" width="12" height="15" rx="2" /><path d="M16 5V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" /></>,
     check: <path d="m4 12 5 5L20 6" />,
     lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M7 10V7a5 5 0 0 1 10 0v3" /></>,
+    star: <path d="m12 2.5 2.9 6 6.6 1-4.8 4.7 1.1 6.6-5.8-3.1-5.8 3.1 1.1-6.6-4.8-4.7 6.6-1 2.9-6Z" />,
   };
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -63,6 +71,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [role, setRole] = useState('AI Engineer');
   const [name, setName] = useState('');
+  const [model, setModel] = useState(() => stored(MODEL_KEY) || DEFAULT_MODEL);
   const [research, setResearch] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,6 +79,7 @@ export default function App() {
   const [recipient, setRecipient] = useState('founder');
   const [subjectIndex, setSubjectIndex] = useState(0);
   const [copied, setCopied] = useState('');
+  const [starCount, setStarCount] = useState(null);
   const jdFileRef = useRef(null);
   const resumeFileRef = useRef(null);
   const keyRef = useRef(null);
@@ -84,6 +94,34 @@ export default function App() {
   useEffect(() => {
     if (result && window.matchMedia('(max-width: 900px)').matches) resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [result]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let lastFetchedAt = 0;
+    function refreshStars() {
+      if (Date.now() - lastFetchedAt < 5 * 60 * 1000) return;
+      lastFetchedAt = Date.now();
+      fetch('https://api.github.com/repos/dv2202/cold_email', {
+        headers: { Accept: 'application/vnd.github+json' },
+        cache: 'no-store',
+        signal: controller.signal,
+      }).then(response => {
+        if (!response.ok) throw new Error('GitHub stars unavailable');
+        return response.json();
+      }).then(data => {
+        if (Number.isInteger(data.stargazers_count)) setStarCount(data.stargazers_count);
+      }).catch(() => {});
+    }
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') refreshStars();
+    }
+    refreshStars();
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      controller.abort();
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
 
   function keepKey() {
     const value = keyInput.trim();
@@ -148,7 +186,7 @@ export default function App() {
     if (research && !company.trim()) { setError('Add a company name to research it.'); return; }
     setBusy(true);
     try {
-      const payload = { api_key: savedKey, profile, profile_distilled: stored(PROFILE_DISTILLED) === '1', company: company.trim(), job_description: jd.trim(), role: role.trim(), name: name.trim(), research };
+      const payload = { api_key: savedKey, profile, profile_distilled: stored(PROFILE_DISTILLED) === '1', company: company.trim(), job_description: jd.trim(), role: role.trim(), name: name.trim(), model, research };
       if (jdFile) payload.file = { name: jdFile.name, content: await fileAsBase64(jdFile) };
       const response = await fetch(apiUrl('/api/generate'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
@@ -169,9 +207,12 @@ export default function App() {
 
   return <div className="site-shell">
     <header className="site-header"><div className="page-width header-inner">
-      <a href="/" className="brand" aria-label="Postscript home"><span className="brand-mark">ps</span><span>postscript<span className="brand-dot">.</span></span></a>
+      <a href="/" className="brand" aria-label="Postscript home"><span className="brand-mark">ps</span><span className="brand-name">postscript<span className="brand-dot">.</span></span></a>
       <span className="header-descriptor">THE THOUGHTFUL OUTREACH STUDIO</span>
-      <a className="header-link" href="#workspace">Start writing <Icon name="arrow" className="h-4 w-4" /></a>
+      <nav className="header-actions" aria-label="Header links">
+        <a className="github-link" href="https://github.com/dv2202/cold_email" target="_blank" rel="noopener noreferrer" aria-label={`View cold_email on GitHub${starCount === null ? '' : `, ${starCount} stars`}`}><span>GitHub</span><span className="github-stars"><Icon name="star" className="h-3.5 w-3.5" />{starCount === null ? '—' : starCount.toLocaleString()}</span></a>
+        <a className="header-link" href="#compose">Get started <Icon name="arrow" className="h-4 w-4" /></a>
+      </nav>
     </div></header>
 
     <main className="page-width" id="workspace">
@@ -190,10 +231,11 @@ export default function App() {
       </section>
 
       <div className="workspace-grid">
-        <section className="compose" aria-labelledby="compose-title"><div className="panel-heading"><span className="section-number">01 / THE BRIEF</span><h2 id="compose-title">Tell us about the opportunity.</h2><p>Add a company, a job description, or both.</p></div>
+        <section className="compose" id="compose" aria-labelledby="compose-title"><div className="panel-heading"><span className="section-number">01 / THE BRIEF</span><h2 id="compose-title">Tell us about the opportunity.</h2><p>Add a company, a job description, or both.</p></div>
           <form onSubmit={generate} className="compose-form"><div className="field"><label htmlFor="company">Company name</label><input id="company" value={company} onChange={e => setCompany(e.target.value)} maxLength={150} autoComplete="organization" placeholder="e.g. Linear" /></div><div className="field-divider"><span>AND / OR</span></div><div className="field"><label htmlFor="jd">Job description</label><textarea id="jd" value={jd} onChange={e => setJd(e.target.value)} maxLength={60000} placeholder="Paste the role, responsibilities, and requirements here…" rows={7} /></div>
             <div className={`dropzone ${dragging ? 'dragging' : ''}`} onDragEnter={e => { e.preventDefault(); setDragging(true); }} onDragOver={e => e.preventDefault()} onDragLeave={e => { e.preventDefault(); setDragging(false); }} onDrop={e => { e.preventDefault(); setDragging(false); chooseJd(e.dataTransfer.files?.[0]); }}><input ref={jdFileRef} type="file" accept=".txt,.md,.pdf,.docx" className="sr-only" aria-label="Upload job description" onChange={e => chooseJd(e.target.files?.[0])} /><span className="drop-icon"><Icon name="upload" className="h-5 w-5" /></span><div className="drop-copy"><strong>{jdFile ? jdFile.name : 'Have the job description as a file?'}</strong><span>{jdFile ? 'Ready to use with your pasted text' : 'Drop it here or browse your files · max 3 MB'}</span></div>{jdFile ? <button type="button" className="drop-action" onClick={() => { setJdFile(null); jdFileRef.current.value = ''; }} aria-label="Remove uploaded job description">×</button> : <button type="button" className="drop-action" onClick={() => jdFileRef.current?.click()}>Browse</button>}</div>
             <div className="field-pair"><div className="field"><label htmlFor="role">Your target role</label><input id="role" value={role} onChange={e => setRole(e.target.value)} maxLength={150} placeholder="e.g. AI Engineer" /></div><div className="field"><div className="field-label-row"><label htmlFor="name">Their first name</label><span>Optional</span></div><input id="name" value={name} onChange={e => setName(e.target.value)} maxLength={100} placeholder="e.g. Alex" /></div></div>
+            <div className="field"><label htmlFor="model">Writing model</label><div className="select-wrap"><select id="model" value={model} onChange={e => { setModel(e.target.value); save(MODEL_KEY, e.target.value); }}>{MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><span className="select-chevron" aria-hidden="true">⌄</span></div></div>
             <label className="research-row"><span className="research-copy"><strong>Research this company</strong><span>Gemini will look for company context. This may take longer.</span></span><input type="checkbox" checked={research} onChange={e => setResearch(e.target.checked)} /><span className="switch-track" aria-hidden="true" /></label>
             {error && <p className="form-error" role="alert">{error}</p>}<button className="generate-button" disabled={busy} type="submit"><span>{busy ? 'Writing your drafts…' : 'Generate three emails'}</span>{busy ? <span className="spinner" /> : <Icon name="arrow" className="h-5 w-5" />}</button><p className="form-note"><Icon name="lock" className="h-3.5 w-3.5" /> Your key and resume stay in this browser between visits.</p>
           </form>

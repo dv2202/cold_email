@@ -84,11 +84,46 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible 
   font-weight:700;
   letter-spacing:.17em
 }
+.header-actions {
+  display:flex;
+  align-items:center;
+  gap:18px
+}
+.github-link {
+  display:inline-flex;
+  align-items:center;
+  gap:11px;
+  min-height:36px;
+  padding:0 12px;
+  border:1px solid #dce4d9;
+  border-radius:8px;
+  background:#fff;
+  color:#33473a;
+  text-decoration:none;
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+  transition:border-color 140ms ease,transform 140ms cubic-bezier(.23,1,.32,1)
+}
+.github-link:hover {
+  border-color:#97b298
+}
+.github-link:active {
+  transform:scale(.97)
+}
+.github-stars {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding-left:10px;
+  border-left:1px solid #e8ece5;
+  color:#a96745;
+  font-variant-numeric:tabular-nums
+}
 .header-link {
   display:inline-flex;
   align-items:center;
   gap:8px;
-  margin-left:25px;
   color:#355f46;
   text-decoration:none;
   font-size:12px;
@@ -458,6 +493,35 @@ h1 em {
 }
 .field input::placeholder,.field textarea::placeholder {
   color:#a9b2a8
+}
+.select-wrap {
+  position:relative
+}
+.field select {
+  width:100%;
+  appearance:none;
+  border:1px solid #dfe4dc;
+  border-radius:9px;
+  background:#fff;
+  padding:12px 36px 12px 13px;
+  color:#26382f;
+  font-size:13px;
+  outline:0;
+  cursor:pointer;
+  transition:border-color 140ms ease,box-shadow 140ms ease
+}
+.field select:focus {
+  border-color:#799c7d;
+  box-shadow:0 0 0 3px rgba(83,127,91,.11)
+}
+.select-chevron {
+  position:absolute;
+  top:50%;
+  right:13px;
+  transform:translateY(-55%);
+  color:#64836b;
+  font-size:18px;
+  pointer-events:none
 }
 .field-divider {
   display:flex;
@@ -983,8 +1047,12 @@ h1 em {
   }
 }
 @media(max-width:700px) {
-  .header-descriptor,.header-link {
+  .header-descriptor {
     display:none
+  }
+  .header-actions {
+    margin-left:auto;
+    gap:12px
   }
   .intro {
     display:block;
@@ -1010,7 +1078,22 @@ h1 em {
     width:calc(100% - 28px)
   }
   .header-inner {
-    height:68px
+    height:68px;
+    gap:9px
+  }
+  .github-link {
+    gap:0;
+    padding:0 10px
+  }
+  .github-link>span:first-child {
+    display:none
+  }
+  .github-stars {
+    padding-left:0;
+    border-left:0
+  }
+  .header-actions {
+    gap:11px
   }
   h1 {
     font-size:clamp(38px,9vw,46px)
@@ -1056,6 +1139,11 @@ h1 em {
   }
   .site-footer {
     padding:26px 0
+  }
+}
+@media(max-width:360px) {
+  .brand-name {
+    display:none
   }
 }
 @media(prefers-reduced-motion:reduce) {

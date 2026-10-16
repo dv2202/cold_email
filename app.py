@@ -61,7 +61,7 @@ def gemini_error_message(code: int, status: str | None = None, message: str | No
     if code == 403:
         return "Gemini denied this request. Check the API key and model access."
     if code == 404:
-        return "Gemini could not find the model. Check the GEMINI_MODEL setting."
+        return "Gemini could not find the model. Pick a different model and try again."
     if code == 429:
         return "Gemini quota or rate limit was reached. Check your quota or try again later."
     if code >= 500:
@@ -117,6 +117,11 @@ def parse_email(output: str) -> dict:
 RECIPIENT_ORDER = ["founder", "hr", "engineer"]
 RECIPIENT_LABELS = {"founder": "Founder", "hr": "Recruiter / HR", "engineer": "Engineer"}
 
+# The user picks the model in the app. The allowlist keeps requests to known-good
+# Gemini ids; anything else falls back to the default.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+ALLOWED_MODELS = {"gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-flash-lite"}
+
 
 def generate(payload: dict) -> dict:
     if not isinstance(payload, dict):
@@ -125,6 +130,9 @@ def generate(payload: dict) -> dict:
     company = str(payload.get("company") or "").strip()[:150]
     role = str(payload.get("role") or "AI Engineer").strip()[:150] or "AI Engineer"
     name = str(payload.get("name") or "").strip()[:100]
+    model = str(payload.get("model") or "").strip()
+    if model not in ALLOWED_MODELS:
+        model = DEFAULT_MODEL
     jd = str(payload.get("job_description") or "").strip()
     if payload.get("file"):
         extracted = extract_file(payload["file"])
@@ -155,7 +163,7 @@ def generate(payload: dict) -> dict:
             # Analyze the raw resume once; cache the result in the browser afterwards.
             from generate import distill_profile
 
-            cleaned = distill_profile(profile, api_key=api_key)
+            cleaned = distill_profile(profile, api_key=api_key, model=model)
             if cleaned:
                 profile = cleaned[:MAX_PROFILE_CHARS]
                 distilled_update = profile
@@ -164,7 +172,7 @@ def generate(payload: dict) -> dict:
         if research:
             from research import research_company
 
-            notes = research_company(company, role, api_key=api_key)
+            notes = research_company(company, role, api_key=api_key, model=model)
 
         variants = {}
         for recipient in RECIPIENT_ORDER:
@@ -177,6 +185,7 @@ def generate(payload: dict) -> dict:
                 jd=jd,
                 company=company,
                 api_key=api_key,
+                model=model,
             )
             if not output:
                 raise RuntimeError("The model returned an empty response.")
