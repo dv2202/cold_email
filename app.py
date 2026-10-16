@@ -218,25 +218,6 @@ def health() -> PlainTextResponse:
     return PlainTextResponse("ok")
 
 
-@app.get("/api/debug", include_in_schema=False)
-def debug() -> JSONResponse:
-    def listing(path: Path) -> list[str]:
-        try:
-            return sorted(p.name for p in path.iterdir())[:50]
-        except OSError:
-            return ["<unavailable>"]
-
-    return json_response(200, {
-        "here": str(HERE),
-        "cwd": str(Path.cwd()),
-        "web_root": str(WEB_ROOT),
-        "index_found": (WEB_ROOT / "index.html").is_file(),
-        "here_list": listing(HERE),
-        "here_public_list": listing(HERE / "public"),
-        "task_list": listing(Path("/var/task")),
-    })
-
-
 def static_asset(path: str) -> tuple[bytes, str] | None:
     """Serve the Vite entry point and files inside its assets directory."""
     if path == "/":

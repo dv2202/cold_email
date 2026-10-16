@@ -2,7 +2,6 @@
 .venv/
 frontend/node_modules/
 frontend/dist/
-public/
 profile.md
 emails/
 __pycache__/
