@@ -1,2 +1,0 @@
-[tool.vercel.scripts]
-build = "npm install --prefix frontend --include=dev && npm run build --prefix frontend -- --outDir ../public --emptyOutDir"

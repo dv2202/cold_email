@@ -61,10 +61,10 @@ The browser key does not come from `.env`. The optional `.env` file can set `GEM
 
 ## Deploy on Vercel
 
-Deploy the repository as **one Vercel project**. Vercel detects the FastAPI `app` in root [`app.py`](app.py). The build command in [`pyproject.toml`](pyproject.toml) builds the React app into root `public/`, which Vercel serves from its CDN. Requests to `/api/generate`, `/api/save-resume`, `/health`, and `/docs` go to the FastAPI function on the same domain. FastAPI still handles only the backend.
+Deploy the repository as **one Vercel project**. Vercel detects the FastAPI `app` in root [`app.py`](app.py) and installs Python dependencies from `requirements.txt`. The build command in [`vercel.json`](vercel.json) builds the React app into root `public/`, which Vercel serves from its CDN. Requests to `/api/generate`, `/api/save-resume`, `/health`, and `/docs` go to the FastAPI function on the same domain. FastAPI still handles only the backend.
 
 1. Push this repository to GitHub, GitLab, or Bitbucket and choose **Add New → Project** in Vercel. Import the repository.
-2. Keep **Root Directory** at the repository root. Select **FastAPI** if Vercel does not detect it. Leave the Build Command and Output Directory overrides unset so Vercel uses the repository configuration.
+2. Keep **Root Directory** at the repository root. Select **FastAPI** if Vercel does not detect it. Leave the Build Command and Output Directory settings alone; `vercel.json` supplies the build command.
 3. Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for this same-domain deployment. You can optionally set `GEMINI_MODEL` and `RESEARCH_MODEL` in Vercel's Environment Variables. The Gemini API key is entered in the app, not as a Vercel environment variable.
 4. Click **Deploy**. Open the deployment URL for the React page, then check `/health` for `ok` and `/docs` for the API docs. Add your key and resume in the deployed page and try generating an email.
 
