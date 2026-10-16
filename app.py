@@ -5,6 +5,7 @@ import binascii
 import asyncio
 import io
 import json
+import mimetypes
 import os
 import re
 import traceback
@@ -12,13 +13,16 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from config import load_env
 
 
 HERE = Path(__file__).resolve().parent
 load_env(HERE / ".env")
+# The built Vite frontend. On Vercel this one function serves both the SPA and
+# the API; locally the Vite dev server handles the frontend and proxies the API.
+WEB_ROOT = HERE / "public"
 MAX_REQUEST_BYTES = 4_300_000
 MAX_FILE_BYTES = 3 * 1024 * 1024
 MAX_JD_CHARS = 60_000
@@ -205,6 +209,40 @@ def json_response(status: int, data: dict) -> JSONResponse:
 @app.get("/health", include_in_schema=False)
 def health() -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+def static_asset(path: str) -> tuple[bytes, str] | None:
+    """Serve the Vite entry point and files inside its assets directory."""
+    if path == "/":
+        filename = WEB_ROOT / "index.html"
+    elif re.fullmatch(r"/assets/[A-Za-z0-9_.-]+", path):
+        filename = WEB_ROOT / path.lstrip("/")
+    else:
+        return None
+    if not filename.is_file():
+        return None
+    content_type = mimetypes.guess_type(filename.name)[0] or "application/octet-stream"
+    if content_type.startswith("text/") or content_type == "application/javascript":
+        content_type += "; charset=utf-8"
+    return filename.read_bytes(), content_type
+
+
+def serve_asset(path: str) -> Response:
+    asset = static_asset(path)
+    if asset is None:
+        return json_response(404, {"error": "Not found."})
+    body, content_type = asset
+    return Response(content=body, media_type=content_type, headers={"X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/", include_in_schema=False)
+def index() -> Response:
+    return serve_asset("/")
+
+
+@app.get("/assets/{filename}", include_in_schema=False)
+def built_asset(filename: str) -> Response:
+    return serve_asset(f"/assets/{filename}")
 
 
 async def read_json(request: Request) -> dict:

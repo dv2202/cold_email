@@ -1,14 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm install --prefix frontend --include=dev && npm run build --prefix frontend -- --outDir ../public --emptyOutDir",
-  "outputDirectory": "public",
   "functions": {
     "api/index.py": {
-      "includeFiles": "{*.py,style_examples.md}",
+      "includeFiles": "{*.py,style_examples.md,public/**}",
       "maxDuration": 60
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
-  ]
+  }
 }
