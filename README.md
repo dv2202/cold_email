@@ -2,6 +2,38 @@
 
 React and Tailwind make the frontend. FastAPI handles the API and calls Gemini. The frontend and backend run separately.
 
+## How it works
+
+This app does not use LangChain or LangGraph. There is no autonomous agent that plans, calls tools, and revises its work. `app.py` controls the workflow with ordinary Python code; `generate.py` and `research.py` call Gemini directly through the `google-genai` SDK. When company research is enabled, Gemini can use its Google Search grounding tool during that one research call.
+
+```mermaid
+flowchart TD
+    U[User in React frontend] --> K[Save Gemini API key in browser]
+    U --> R[Upload resume]
+    R --> SR[POST /api/save-resume]
+    SR --> X[FastAPI extracts resume text]
+    X --> B[Store resume text in browser]
+    K --> I[Enter company or job description and click Generate]
+    B --> I
+    I --> G[POST /api/generate with key, profile, and job details]
+    G --> V[FastAPI validates input and extracts uploaded JD text]
+    V --> D{Profile already distilled?}
+    D -->|No| P[Gemini condenses resume into a candidate profile]
+    D -->|Yes| Q{Company research enabled?}
+    P --> Q
+    Q -->|Yes| S[Gemini researches company with Google Search grounding]
+    Q -->|No| L[Start fixed Python loop over founder, HR, engineer]
+    S --> L
+    L --> W[Gemini writes email for current recipient]
+    W --> T[Parse subject lines and email]
+    T --> M{More recipients?}
+    M -->|Yes, next recipient| W
+    M -->|No| O[FastAPI returns three variants and optional distilled profile]
+    O --> F[React shows drafts and caches distilled profile in browser]
+```
+
+The loop generates exactly three variants, one each for a founder, recruiter/HR, and engineer. It is a fixed `for` loop, not an agent reasoning or retry loop. Generating again requires another click. Resume extraction does not call Gemini; profile distillation happens on the first generation and is then cached in the browser.
+
 ## Run locally
 
 Install Python 3.10+ and Node.js 20.19+ or 22.12+, then from the project root:
