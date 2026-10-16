@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --color-ink: #223329;
+  --color-muted: #7d887e;
+  --color-coral: #df7257;
+  --color-leaf: #416a50;
+  --color-canvas: #f4f3ee;
+}
+
+@layer base {
+  body {
+    background: radial-gradient(circle at 92% 3%, #e4ebdf 0, transparent 29rem), #f4f3ee;
+    color: var(--color-ink);
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+}
