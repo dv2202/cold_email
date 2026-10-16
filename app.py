@@ -22,7 +22,14 @@ HERE = Path(__file__).resolve().parent
 load_env(HERE / ".env")
 # The built Vite frontend. On Vercel this one function serves both the SPA and
 # the API; locally the Vite dev server handles the frontend and proxies the API.
-WEB_ROOT = HERE / "public"
+def _find_web_root() -> Path:
+    for candidate in (HERE / "public", HERE.parent / "public", Path.cwd() / "public", Path("/var/task/public")):
+        if (candidate / "index.html").is_file():
+            return candidate
+    return HERE / "public"
+
+
+WEB_ROOT = _find_web_root()
 MAX_REQUEST_BYTES = 4_300_000
 MAX_FILE_BYTES = 3 * 1024 * 1024
 MAX_JD_CHARS = 60_000
@@ -209,6 +216,25 @@ def json_response(status: int, data: dict) -> JSONResponse:
 @app.get("/health", include_in_schema=False)
 def health() -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+@app.get("/api/debug", include_in_schema=False)
+def debug() -> JSONResponse:
+    def listing(path: Path) -> list[str]:
+        try:
+            return sorted(p.name for p in path.iterdir())[:50]
+        except OSError:
+            return ["<unavailable>"]
+
+    return json_response(200, {
+        "here": str(HERE),
+        "cwd": str(Path.cwd()),
+        "web_root": str(WEB_ROOT),
+        "index_found": (WEB_ROOT / "index.html").is_file(),
+        "here_list": listing(HERE),
+        "here_public_list": listing(HERE / "public"),
+        "task_list": listing(Path("/var/task")),
+    })
 
 
 def static_asset(path: str) -> tuple[bytes, str] | None:
