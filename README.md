@@ -1,37 +1,24 @@
 # Postscript
 
-React and Tailwind make the frontend. FastAPI handles the API and calls Gemini. The frontend and backend run separately.
+Turn a company name or job description into three short, personal cold emails, one each for a founder, a recruiter/HR, and an engineer. React frontend, FastAPI backend, Google Gemini for the writing.
 
 ## How it works
 
-This app does not use LangChain or LangGraph. There is no autonomous agent that plans, calls tools, and revises its work. `app.py` controls the workflow with ordinary Python code; `generate.py` and `research.py` call Gemini directly through the `google-genai` SDK. When company research is enabled, Gemini can use its Google Search grounding tool during that one research call.
-
-
-
 ```mermaid
-flowchart TB
-    A["Upload Resume"] --> B["Extract & Cache Resume Text"]
-    B --> C["Enter Company / Job Description"]
-    K["Add Gemini API Key"] --> C
-
-    C --> D["Generate Emails"]
-    D --> E["Build Candidate Profile"]
-
-    subgraph AI["AI Processing"]
-        direction LR
-        F["Research Company (Optional)"] --> G["Generate 3 Personalized Emails"]
-    end
-
-    E --> F
-    G --> H["Review & Copy Drafts"]
+flowchart LR
+    A["Save resume + Gemini key (in browser)"] --> B["Enter company / job description"]
+    B --> C["Generate"]
+    C --> D["Distill resume once (cached in browser)"]
+    D --> E["Research company (optional)"]
+    E --> F["Write 3 emails: founder / HR / engineer"]
+    F --> G["Review and copy"]
 ```
 
-
-The loop generates exactly three variants, one each for a founder, recruiter/HR, and engineer. It is a fixed `for` loop, not an agent reasoning or retry loop. Generating again requires another click. Resume extraction does not call Gemini; profile distillation happens on the first generation and is then cached in the browser.
+The key and resume are stored in your browser and sent to the backend with each request. The resume is distilled into a short profile on the first generation and cached, so later generations skip that step. Each generation is one fixed pass that produces the three variants; generating again is another click.
 
 ## Run locally
 
-Install Python 3.10+ and Node.js 20.19+ or 22.12+, then from the project root:
+Needs Python 3.10+ and Node 20.19+ (or 22.12+). From the project root:
 
 ```sh
 python3 -m venv .venv
@@ -40,55 +27,50 @@ python -m pip install -r requirements.txt
 npm install --prefix frontend
 ```
 
-Start the backend in one terminal:
+Run the backend and frontend in two terminals:
 
 ```sh
+# terminal 1 — API on :8000
 source .venv/bin/activate
-python -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
-```
+python -m uvicorn app:app --reload --port 8000
 
-Start the frontend in another terminal:
-
-```sh
+# terminal 2 — app on :5173
 npm run dev --prefix frontend
 ```
 
-Open **http://127.0.0.1:5173** for the app. Vite proxies local `/api` calls to FastAPI at port 8000. The backend has API docs at **http://127.0.0.1:8000/docs** and a health check at **http://127.0.0.1:8000/health**. Its root URL does not serve the React page.
+Open **http://127.0.0.1:5173**. Vite proxies `/api` calls to the backend. Save your Gemini key and resume in the Personal setup section, add a company name or job description (paste it or upload a PDF, DOCX, TXT, or MD up to 3 MB), and generate.
 
-Save your Gemini API key and resume in the frontend's Personal setup section. Both are stored in that browser. The key is sent to the FastAPI backend with each generation request; the backend sends it to Gemini. A company name or job description is enough to generate drafts. You can paste a JD or upload a PDF, DOCX, TXT, or MD file up to 3 MB.
-
-The browser key does not come from `.env`. The optional `.env` file can set `GEMINI_MODEL` or `RESEARCH_MODEL`; see `.env.example`.
+An optional `.env` can set `GEMINI_MODEL` or `RESEARCH_MODEL` (see `.env.example`). The API key is entered in the app, never read from `.env`.
 
 ## Deploy on Vercel
 
-Deploy the repository as **one Vercel project**. Vercel detects the FastAPI `app` in root [`app.py`](app.py) and installs Python dependencies from `requirements.txt`. The build command in [`vercel.json`](vercel.json) builds the React app into root `public/`, which Vercel serves from its CDN. Requests to `/api/generate`, `/api/save-resume`, `/health`, and `/docs` go to the FastAPI function on the same domain. FastAPI still handles only the backend.
+The whole repo deploys as one Vercel project. Vercel detects the FastAPI `app` in `app.py` and runs it as a single serverless function (`api/index.py`) that serves both the built React app and the API on the same domain.
 
-1. Push this repository to GitHub, GitLab, or Bitbucket and choose **Add New → Project** in Vercel. Import the repository.
-2. Keep **Root Directory** at the repository root. Select **FastAPI** if Vercel does not detect it. Leave the Build Command and Output Directory settings alone; `vercel.json` supplies the build command.
-3. Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for this same-domain deployment. You can optionally set `GEMINI_MODEL` and `RESEARCH_MODEL` in Vercel's Environment Variables. The Gemini API key is entered in the app, not as a Vercel environment variable.
-4. Click **Deploy**. Open the deployment URL for the React page, then check `/health` for `ok` and `/docs` for the API docs. Add your key and resume in the deployed page and try generating an email.
+Two things matter because of how Vercel bundles the function:
 
-You can also deploy from the repository root with `vercel` for a preview or `vercel --prod` for production. The local Vite and Uvicorn commands above still work. The 3 MB file limit keeps base64-encoded uploads below [Vercel's 4.5 MB function request limit](https://vercel.com/docs/functions/limitations).
+- **The built frontend is committed.** The function is bundled from the Git source, so `public/` (the Vite build) is checked in rather than ignored. After any frontend change, rebuild and commit it:
 
-## Deploy on Render
+  ```sh
+  npm run build --prefix frontend -- --outDir ../public --emptyOutDir
+  git add public && git commit -m "rebuild frontend" && git push
+  ```
 
-[`render.yaml`](render.yaml) defines two services from this repository:
+- **No `/api` rewrite.** FastAPI receives requests on their original paths, so `vercel.json` has no rewrites. It only sets the build command and the function's `maxDuration`.
 
-| Service | Purpose |
-| --- | --- |
-| `cold-email-frontend` | Builds `frontend/` and publishes the React site as static files. |
-| `cold-email-studio` | Runs FastAPI with Uvicorn and exposes `/api/generate`, `/api/save-resume`, `/health`, and `/docs`. |
+Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for a same-domain deploy. You may set `GEMINI_MODEL` / `RESEARCH_MODEL` in Vercel; the Gemini key is entered in the app, not as an environment variable. The 3 MB upload limit keeps base64 payloads under Vercel's 4.5 MB function request limit.
 
-Push the project to a Git repository, then create a **New Blueprint** in Render using that repository. The Blueprint passes the backend URL to Vite as `VITE_API_BASE_URL` and the frontend URL to FastAPI as `FRONTEND_ORIGIN` for CORS. After deployment, open the **frontend** URL and enter your Gemini key and resume there. Browser storage from localhost is separate from storage on the deployed site.
+## Deploy on Render (alternative)
 
-If you host the frontend somewhere else, set `VITE_API_BASE_URL` to the public FastAPI URL **before building** the frontend, and set `FRONTEND_ORIGIN` to the frontend's exact origin on the backend. Neither URL needs a trailing slash.
+`render.yaml` defines two services instead: a static site built from `frontend/`, and the FastAPI backend. The blueprint wires the backend URL into the frontend as `VITE_API_BASE_URL` and the frontend origin into the backend as `FRONTEND_ORIGIN` (CORS). Create a new Blueprint from the repo, then open the frontend URL.
 
 ## Project files
 
-- `frontend/`: React, Tailwind, and Vite source
-- `app.py`: FastAPI endpoints and request handling
-- `generate.py`, `research.py`, `style_examples.md`: Gemini email writing and optional company research
-- `config.py`: optional local `.env` loading
-- `test_app.py`: API and generator tests
+- `frontend/` — React, Tailwind, Vite source
+- `public/` — built frontend (committed for Vercel)
+- `app.py` — FastAPI endpoints, request handling, static serving
+- `generate.py`, `research.py`, `style_examples.md` — Gemini writing and optional company research
+- `api/index.py` — Vercel entry point that exposes the FastAPI app
+- `config.py` — optional local `.env` loading
+- `test_app.py` — tests
 
-`profile.md` and `emails/` are personal local data and are ignored by Git. The web app uses the resume saved in the browser.
+`profile.md` and `emails/` are personal local data and are Git-ignored; the web app uses the resume saved in the browser.
