@@ -1,4 +1,4 @@
-"""FastAPI server for the React UI and Gemini cold email endpoints."""
+"""FastAPI backend for the Gemini cold email endpoints."""
 
 import base64
 import binascii
@@ -19,8 +19,8 @@ from config import load_env
 
 HERE = Path(__file__).resolve().parent
 load_env(HERE / ".env")
-MAX_REQUEST_BYTES = 9 * 1024 * 1024
-MAX_FILE_BYTES = 5 * 1024 * 1024
+MAX_REQUEST_BYTES = 4_300_000
+MAX_FILE_BYTES = 3 * 1024 * 1024
 MAX_JD_CHARS = 60_000
 MAX_PROFILE_CHARS = 40_000
 app = FastAPI(title="Postscript", description="Cold email generator API")
@@ -70,7 +70,7 @@ def extract_file(file_data: dict) -> str:
     except (binascii.Error, ValueError, TypeError):
         raise InputError("The uploaded file could not be read.") from None
     if not raw or len(raw) > MAX_FILE_BYTES:
-        raise InputError("Choose a file smaller than 5 MB.")
+        raise InputError("Choose a file smaller than 3 MB.")
 
     try:
         if extension in {".txt", ".md"}:
@@ -217,12 +217,12 @@ async def read_json(request: Request) -> dict:
         except ValueError:
             raise InputError("Invalid request length.") from None
         if declared_length > MAX_REQUEST_BYTES:
-            raise InputError("The request is too large. Use a file smaller than 5 MB.")
+            raise InputError("The request is too large. Use a file smaller than 3 MB.")
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
         if len(body) > MAX_REQUEST_BYTES:
-            raise InputError("The request is too large. Use a file smaller than 5 MB.")
+            raise InputError("The request is too large. Use a file smaller than 3 MB.")
     if not body:
         raise InputError("Send a JSON request.")
     try:

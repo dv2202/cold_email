@@ -55,9 +55,20 @@ npm run dev --prefix frontend
 
 Open **http://127.0.0.1:5173** for the app. Vite proxies local `/api` calls to FastAPI at port 8000. The backend has API docs at **http://127.0.0.1:8000/docs** and a health check at **http://127.0.0.1:8000/health**. Its root URL does not serve the React page.
 
-Save your Gemini API key and resume in the frontend's Personal setup section. Both are stored in that browser. The key is sent to the FastAPI backend with each generation request; the backend sends it to Gemini. A company name or job description is enough to generate drafts. You can paste a JD or upload a PDF, DOCX, TXT, or MD file up to 5 MB.
+Save your Gemini API key and resume in the frontend's Personal setup section. Both are stored in that browser. The key is sent to the FastAPI backend with each generation request; the backend sends it to Gemini. A company name or job description is enough to generate drafts. You can paste a JD or upload a PDF, DOCX, TXT, or MD file up to 3 MB.
 
 The browser key does not come from `.env`. The optional `.env` file can set `GEMINI_MODEL` or `RESEARCH_MODEL`; see `.env.example`.
+
+## Deploy on Vercel
+
+Deploy the repository as **one Vercel project**. Vercel detects the FastAPI `app` in root [`app.py`](app.py). The build command in [`pyproject.toml`](pyproject.toml) builds the React app into root `public/`, which Vercel serves from its CDN. Requests to `/api/generate`, `/api/save-resume`, `/health`, and `/docs` go to the FastAPI function on the same domain. FastAPI still handles only the backend.
+
+1. Push this repository to GitHub, GitLab, or Bitbucket and choose **Add New → Project** in Vercel. Import the repository.
+2. Keep **Root Directory** at the repository root. Select **FastAPI** if Vercel does not detect it. Leave the Build Command and Output Directory overrides unset so Vercel uses the repository configuration.
+3. Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for this same-domain deployment. You can optionally set `GEMINI_MODEL` and `RESEARCH_MODEL` in Vercel's Environment Variables. The Gemini API key is entered in the app, not as a Vercel environment variable.
+4. Click **Deploy**. Open the deployment URL for the React page, then check `/health` for `ok` and `/docs` for the API docs. Add your key and resume in the deployed page and try generating an email.
+
+You can also deploy from the repository root with `vercel` for a preview or `vercel --prod` for production. The local Vite and Uvicorn commands above still work. The 3 MB file limit keeps base64-encoded uploads below [Vercel's 4.5 MB function request limit](https://vercel.com/docs/functions/limitations).
 
 ## Deploy on Render
 
