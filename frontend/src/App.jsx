@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { extractText, validateFile } from './extract.js';
+import { parseEmail, RECIPIENT_ORDER, RECIPIENT_LABELS } from './prompts.js';
+import { distillProfile, researchCompany, generateEmail } from './gemini.js';
 
 const KEY = 'cold_email_gemini_key';
 const PROFILE = 'cold_email_profile';
@@ -11,10 +14,6 @@ const MODELS = [
   { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash — stronger' },
   { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' },
 ];
-const ACCEPTED = ['txt', 'md', 'pdf', 'docx'];
-const MAX_FILE = 3 * 1024 * 1024;
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-const apiUrl = (path) => `${API_BASE_URL}${path}`;
 
 function stored(key) {
   try { return localStorage.getItem(key) || ''; } catch { return ''; }
@@ -24,20 +23,6 @@ function save(key, value) {
 }
 function remove(key) {
   try { localStorage.removeItem(key); } catch { /* Nothing to remove. */ }
-}
-function validateFile(file) {
-  if (!file) return 'Choose a file first.';
-  if (!ACCEPTED.includes(file.name.split('.').pop().toLowerCase())) return 'Choose a TXT, MD, PDF, or DOCX file.';
-  if (file.size > MAX_FILE) return 'Choose a file smaller than 3 MB.';
-  return '';
-}
-function fileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = () => reject(new Error('Could not read the selected file.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 function Icon({ name, className = 'h-5 w-5' }) {
@@ -144,15 +129,14 @@ export default function App() {
     setSavingResume(true);
     setResumeMessage('');
     try {
-      const content = await fileAsBase64(resumeFile);
-      const response = await fetch(apiUrl('/api/save-resume'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: { name: resumeFile.name, content } }) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Could not read that resume.');
-      save(PROFILE, data.text);
-      save(PROFILE_NAME, data.name);
+      // Read the file to text in the browser. The bytes never leave the device.
+      const text = await extractText(resumeFile);
+      if (!text) throw new Error('No text was found in that file. Try a different resume file.');
+      save(PROFILE, text);
+      save(PROFILE_NAME, resumeFile.name);
       remove(PROFILE_DISTILLED);
-      setProfile(data.text);
-      setProfileName(data.name);
+      setProfile(text);
+      setProfileName(resumeFile.name);
       setResumeFile(null);
       if (resumeFileRef.current) resumeFileRef.current.value = '';
       setEditingResume(false);
@@ -186,14 +170,48 @@ export default function App() {
     if (research && !company.trim()) { setError('Add a company name to research it.'); return; }
     setBusy(true);
     try {
-      const payload = { api_key: savedKey, profile, profile_distilled: stored(PROFILE_DISTILLED) === '1', company: company.trim(), job_description: jd.trim(), role: role.trim(), name: name.trim(), model, research };
-      if (jdFile) payload.file = { name: jdFile.name, content: await fileAsBase64(jdFile) };
-      const response = await fetch(apiUrl('/api/generate'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Could not generate your emails.');
-      if (data.profile) { save(PROFILE, data.profile); save(PROFILE_DISTILLED, '1'); setProfile(data.profile); }
-      setResult(data);
-      setRecipient((data.order || Object.keys(data.variants || {}))[0] || 'founder');
+      const roleValue = role.trim() || 'AI Engineer';
+      // Assemble the job description from the pasted text and the optional file.
+      let jobDescription = jd.trim();
+      if (jdFile) {
+        const fileText = await extractText(jdFile);
+        jobDescription = [jobDescription, fileText].filter(Boolean).join('\n\n');
+      }
+      // Distill the resume once, then cache the clean profile in the browser.
+      let currentProfile = profile;
+      if (stored(PROFILE_DISTILLED) !== '1') {
+        const cleaned = await distillProfile({ apiKey: savedKey, model, resumeText: currentProfile });
+        if (cleaned) {
+          currentProfile = cleaned;
+          save(PROFILE, cleaned);
+          save(PROFILE_DISTILLED, '1');
+          setProfile(cleaned);
+        }
+      }
+      // Optional company research with Google Search grounding.
+      let notes = '';
+      if (research) {
+        notes = await researchCompany({ apiKey: savedKey, model, company: company.trim(), role: roleValue });
+      }
+      // One pass per recipient, the same fixed three variants as before.
+      const variants = {};
+      for (const person of RECIPIENT_ORDER) {
+        const output = await generateEmail({
+          apiKey: savedKey,
+          model,
+          profile: currentProfile,
+          notes,
+          role: roleValue,
+          recipient: person,
+          name: name.trim(),
+          jd: jobDescription,
+          company: company.trim(),
+        });
+        if (!output) throw new Error('The model returned an empty response.');
+        variants[person] = parseEmail(output);
+      }
+      setResult({ order: RECIPIENT_ORDER, labels: RECIPIENT_LABELS, variants });
+      setRecipient(RECIPIENT_ORDER[0]);
       setSubjectIndex(0);
     } catch (err) { setError(err.message || 'Could not generate your emails.'); }
     finally { setBusy(false); }
@@ -221,10 +239,10 @@ export default function App() {
       <section className={`setup ${ready ? 'setup-ready' : ''}`} aria-labelledby="setup-title">
         <button type="button" className="setup-toggle" onClick={() => setSetupOpen(!setupOpen)} aria-expanded={setupOpen} aria-controls="setup-details"><span className="setup-icon">{ready ? <Icon name="check" className="h-5 w-5" /> : '✳'}</span><span className="setup-summary"><strong id="setup-title">Personal setup</strong><span>{ready ? 'Your resume and Gemini key are ready' : 'Add your Gemini key and resume to get started'}</span></span><span className="setup-progress"><span className={savedKey ? 'done' : ''}>01 Key</span><span className={profile ? 'done' : ''}>02 Resume</span></span><span className={`setup-chevron ${setupOpen ? 'open' : ''}`}>⌄</span></button>
         {setupOpen && <div id="setup-details" className="setup-details">
-          <div className="setup-item"><div className="setup-item-title"><span>01</span><div><h3>Gemini API key</h3><p>Saved in this browser and sent to the API when you generate.</p></div></div>
+          <div className="setup-item"><div className="setup-item-title"><span>01</span><div><h3>Gemini API key</h3><p>Stored only in this browser. Sent straight to Gemini when you generate, never to our servers.</p></div></div>
             {editingKey ? <div className="setup-actions"><div className="key-input-wrap"><input ref={keyRef} aria-label="Gemini API key" type={showKey ? 'text' : 'password'} value={keyInput} onChange={e => setKeyInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); keepKey(); } }} placeholder="Paste your API key" autoComplete="off" spellCheck="false" /><button type="button" onClick={() => setShowKey(!showKey)}>{showKey ? 'Hide' : 'Show'}</button></div><button type="button" className="button button-secondary" onClick={keepKey}>Save key</button>{keyMessage && <p className="inline-error" role="alert">{keyMessage}</p>}</div> : <div className="saved-control"><span><Icon name="check" className="h-4 w-4" /> Key saved</span><button type="button" onClick={() => { setKeyInput(savedKey); setEditingKey(true); }}>Change</button></div>}
           </div>
-          <div className="setup-item"><div className="setup-item-title"><span>02</span><div><h3>Your resume</h3><p>We use it to connect your experience to the role.</p></div></div>
+          <div className="setup-item"><div className="setup-item-title"><span>02</span><div><h3>Your resume</h3><p>Read in your browser to match your experience to the role. When you generate, its text is sent to Gemini to write the emails, never to our servers.</p></div></div>
             {editingResume ? <div className="setup-actions"><input ref={resumeFileRef} type="file" accept=".txt,.md,.pdf,.docx" className="sr-only" aria-label="Upload resume" onChange={e => chooseResume(e.target.files?.[0])} /><button type="button" className="button button-outline" onClick={() => resumeFileRef.current?.click()}><Icon name="upload" className="h-4 w-4" /> Choose file</button><span className="selected-file">{resumeFile?.name || 'PDF, DOCX, TXT or MD · max 3 MB'}</span><button type="button" className="button button-secondary" disabled={!resumeFile || savingResume} onClick={keepResume}>{savingResume ? 'Saving…' : 'Save resume'}</button>{resumeMessage && <p className="inline-error" role="alert">{resumeMessage}</p>}</div> : <div className="saved-control"><span><Icon name="check" className="h-4 w-4 shrink-0" /> <span className="truncate">{profileName || 'Resume'} saved</span></span><button type="button" onClick={() => setEditingResume(true)}>Replace</button><button type="button" onClick={clearResume}>Remove</button></div>}
           </div>
         </div>}
@@ -237,7 +255,7 @@ export default function App() {
             <div className="field-pair"><div className="field"><label htmlFor="role">Your target role</label><input id="role" value={role} onChange={e => setRole(e.target.value)} maxLength={150} placeholder="e.g. AI Engineer" /></div><div className="field"><div className="field-label-row"><label htmlFor="name">Their first name</label><span>Optional</span></div><input id="name" value={name} onChange={e => setName(e.target.value)} maxLength={100} placeholder="e.g. Alex" /></div></div>
             <div className="field"><label htmlFor="model">Writing model</label><div className="select-wrap"><select id="model" value={model} onChange={e => { setModel(e.target.value); save(MODEL_KEY, e.target.value); }}>{MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><span className="select-chevron" aria-hidden="true">⌄</span></div></div>
             <label className="research-row"><span className="research-copy"><strong>Research this company</strong><span>Gemini will look for company context. This may take longer.</span></span><input type="checkbox" checked={research} onChange={e => setResearch(e.target.checked)} /><span className="switch-track" aria-hidden="true" /></label>
-            {error && <p className="form-error" role="alert">{error}</p>}<button className="generate-button" disabled={busy} type="submit"><span>{busy ? 'Writing your drafts…' : 'Generate three emails'}</span>{busy ? <span className="spinner" /> : <Icon name="arrow" className="h-5 w-5" />}</button><p className="form-note"><Icon name="lock" className="h-3.5 w-3.5" /> Your key and resume stay in this browser between visits.</p>
+            {error && <p className="form-error" role="alert">{error}</p>}<button className="generate-button" disabled={busy} type="submit"><span>{busy ? 'Writing your drafts…' : 'Generate three emails'}</span>{busy ? <span className="spinner" /> : <Icon name="arrow" className="h-5 w-5" />}</button><p className="form-note"><Icon name="lock" className="h-3.5 w-3.5" /> Your key and resume stay in this browser and go straight to Gemini. They never touch our servers.</p>
           </form>
         </section>
 

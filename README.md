@@ -1,6 +1,10 @@
 # Postscript
 
-Turn a company name or job description into three short, personal cold emails, one each for a founder, a recruiter/HR, and an engineer. React frontend, FastAPI backend, Google Gemini for the writing.
+Turn a company name or job description into three short, personal cold emails, one each for a founder, a recruiter/HR, and an engineer. A React single-page app that calls Google Gemini **directly from your browser** with your own API key.
+
+## Privacy
+
+There is no application server in the data path. Your Gemini API key and your resume are stored only in your browser (localStorage) and are sent straight to Google's Gemini API when you generate. They never reach any server of ours. The resume file is parsed to text in the browser too, so the file itself never leaves your device. The only backend is a static file host that serves the built app and has no endpoint that accepts data.
 
 ## How it works
 
@@ -9,68 +13,45 @@ flowchart LR
     A["Save resume + Gemini key (in browser)"] --> B["Enter company / job description"]
     B --> C["Generate"]
     C --> D["Distill resume once (cached in browser)"]
-    D --> E["Research company (optional)"]
+    D --> E["Research company (optional, Google Search grounding)"]
     E --> F["Write 3 emails: founder / HR / engineer"]
     F --> G["Review and copy"]
 ```
 
-The key and resume are stored in your browser and sent to the backend with each request. The resume is distilled into a short profile on the first generation and cached, so later generations skip that step. Each generation is one fixed pass that produces the three variants; generating again is another click.
+The resume is distilled into a short profile on the first generation and cached, so later generations skip that step. Each generation is one fixed pass that produces the three variants; generating again is another click. The model is chosen with a dropdown (default Gemini 3.5 Flash-Lite).
 
 ## Run locally
 
-Needs Python 3.10+ and Node 20.19+ (or 22.12+). From the project root:
+Needs Node 20.19+ (or 22.12+):
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
 npm install --prefix frontend
-```
-
-Run the backend and frontend in two terminals:
-
-```sh
-# terminal 1 — API on :8000
-source .venv/bin/activate
-python -m uvicorn app:app --reload --port 8000
-
-# terminal 2 — app on :5173
 npm run dev --prefix frontend
 ```
 
-Open **http://127.0.0.1:5173**. Vite proxies `/api` calls to the backend. Save your Gemini key and resume in the Personal setup section, add a company name or job description (paste it or upload a PDF, DOCX, TXT, or MD up to 3 MB), and generate.
-
-The model is chosen with a dropdown in the app (defaults to Gemini 3.5 Flash-Lite). The API key is entered in the app too, never read from `.env`. An optional `.env` only holds a fallback `GEMINI_API_KEY` for the CLI (see `.env.example`).
+Open **http://127.0.0.1:5173**. Save your Gemini key and resume in the Personal setup section, add a company name or job description (paste it or upload a PDF, DOCX, TXT, or MD up to 3 MB), and generate. No backend is needed to develop; the browser talks to Gemini directly.
 
 ## Deploy on Vercel
 
-The whole repo deploys as one Vercel project. Vercel detects the FastAPI `app` in `app.py` and runs it as a single serverless function (`api/index.py`) that serves both the built React app and the API on the same domain.
+The repo deploys as one Vercel project. `vercel.json` builds the React app into `public/`, and a small FastAPI function (`api/index.py` / `app.py`) serves those static files. That function only serves files; it has no data endpoints.
 
-Two things matter because of how Vercel bundles the function:
+Because Vercel bundles the function from the Git source, the built `public/` is committed. After any frontend change, rebuild and commit it:
 
-- **The built frontend is committed.** The function is bundled from the Git source, so `public/` (the Vite build) is checked in rather than ignored. After any frontend change, rebuild and commit it:
+```sh
+npm run build --prefix frontend -- --outDir ../public --emptyOutDir
+git add public && git commit -m "rebuild frontend" && git push
+```
 
-  ```sh
-  npm run build --prefix frontend -- --outDir ../public --emptyOutDir
-  git add public && git commit -m "rebuild frontend" && git push
-  ```
-
-- **No `/api` rewrite.** FastAPI receives requests on their original paths, so `vercel.json` has no rewrites. It only sets the build command and the function's `maxDuration`.
-
-Leave `VITE_API_BASE_URL` and `FRONTEND_ORIGIN` unset for a same-domain deploy. No model or key environment variables are needed; both are chosen in the app. The 3 MB upload limit keeps base64 payloads under Vercel's 4.5 MB function request limit.
-
-## Deploy on Render (alternative)
-
-`render.yaml` defines two services instead: a static site built from `frontend/`, and the FastAPI backend. The blueprint wires the backend URL into the frontend as `VITE_API_BASE_URL` and the frontend origin into the backend as `FRONTEND_ORIGIN` (CORS). Create a new Blueprint from the repo, then open the frontend URL.
+No environment variables are needed; the model and key are chosen in the app. Any plain static host also works if you prefer (serve the `public/` build).
 
 ## Project files
 
-- `frontend/` — React, Tailwind, Vite source
+- `frontend/src/App.jsx` — the UI
+- `frontend/src/gemini.js` — direct in-browser Gemini calls
+- `frontend/src/extract.js` — in-browser PDF/DOCX/TXT/MD text extraction
+- `frontend/src/prompts.js` — prompt text, style examples, and output parsing
+- `frontend/src/index.css` — styles
 - `public/` — built frontend (committed for Vercel)
-- `app.py` — FastAPI endpoints, request handling, static serving
-- `generate.py`, `research.py`, `style_examples.md` — Gemini writing and optional company research
-- `api/index.py` — Vercel entry point that exposes the FastAPI app
-- `config.py` — optional local `.env` loading
-- `test_app.py` — tests
+- `app.py`, `api/index.py` — static file host for deployment
 
-`profile.md` and `emails/` are personal local data and are Git-ignored; the web app uses the resume saved in the browser.
+`profile.md` and `emails/` are personal local notes and are Git-ignored.
