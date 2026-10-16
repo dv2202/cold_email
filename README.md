@@ -5,11 +5,13 @@ React and Tailwind make the frontend. FastAPI handles the API and calls Gemini. 
 ## How it works
 
 This app does not use LangChain or LangGraph. There is no autonomous agent that plans, calls tools, and revises its work. `app.py` controls the workflow with ordinary Python code; `generate.py` and `research.py` call Gemini directly through the `google-genai` SDK. When company research is enabled, Gemini can use its Google Search grounding tool during that one research call.
-```
+
+
+
+```mermaid
 flowchart TB
     A["Upload Resume"] --> B["Extract & Cache Resume Text"]
     B --> C["Enter Company / Job Description"]
-
     K["Add Gemini API Key"] --> C
 
     C --> D["Generate Emails"]
@@ -17,20 +19,14 @@ flowchart TB
 
     subgraph AI["AI Processing"]
         direction LR
-        F["Research Company<br/>(Optional)"] --> G["Generate 3 Personalized Emails"]
+        F["Research Company (Optional)"] --> G["Generate 3 Personalized Emails"]
     end
 
     E --> F
     G --> H["Review & Copy Drafts"]
-
-    classDef input fill:#E8F2FF,stroke:#4285F4,color:#17365D
-    classDef ai fill:#E8F7EE,stroke:#299764,color:#174B32
-    classDef output fill:#F3E8FF,stroke:#9561D8,color:#45276B
-
-    class A,B,C,K,D input
-    class E,F,G ai
-    class H output
 ```
+
+
 The loop generates exactly three variants, one each for a founder, recruiter/HR, and engineer. It is a fixed `for` loop, not an agent reasoning or retry loop. Generating again requires another click. Resume extraction does not call Gemini; profile distillation happens on the first generation and is then cached in the browser.
 
 ## Run locally
